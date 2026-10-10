@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Interfaz de Monitoreo{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/panel.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+        // Aplicar tema antes de render (evita flash)
+        (function() {
+            var t = localStorage.getItem('theme') || 'light';
+            document.documentElement.dataset.theme = t;
+        })();
+    </script>
+</head>
+<body>
+<div class="container">
+
+    <div class="header">
+        <div class="title">
+            <h1>{% block header_title %}📊 Interfaz de Monitoreo{% endblock %}</h1>
+            <p>{% block header_sub %}Laboratorio de Investigación I2E · Control térmico y rendimiento{% endblock %}</p>
+        </div>
+        <div class="header-actions">
+            <span class="status-pill" id="arduino-status" title="Estado de conexión con Arduino">
+                <span class="status-dot"></span>
+                <span class="status-text">Arduino</span>
+            </span>
+            <a href="/" class="btn">📊 Dashboard</a>
+            <a href="/nodos" class="btn">🖥️ Nodos</a>
+            <a href="/logs" class="btn">📜 Logs</a>
+            <button class="theme-toggle" id="theme-toggle" title="Cambiar tema">🌙</button>
+        </div>
+    </div>
+
+    <nav class="tabs">
+        <a href="/" class="tab {% if active_tab == 'dashboard' %}active{% endif %}">Dashboard</a>
+        <a href="/nodos" class="tab {% if active_tab == 'nodos' %}active{% endif %}">Gestión de Nodos</a>
+        <a href="/logs" class="tab {% if active_tab == 'logs' %}active{% endif %}">Registro de Eventos</a>
+    </nav>
+
+    {% block content %}{% endblock %}
+
+    <div class="footer">
+        Interfaz de Monitoreo I2E · Actualización en tiempo real · Umbrales: WARNING 60°C · CRITICAL 75°C
+    </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/js/panel.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

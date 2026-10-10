@@ -1,0 +1,442 @@
+{% extends "base.html" %}
+{% set active_tab = 'dashboard' %}
+{% block title %}Dashboard · Cluster Panel I2E{% endblock %}
+
+{% block content %}
+
+<div id="controlsContainer" class="controls-grid"></div>
+
+<div class="stats-grid">
+    <div class="stat-card"><div class="label">🌡️ Promedio Temp</div><div class="value" id="promTemp">--</div><div class="unit">°C</div></div>
+    <div class="stat-card"><div class="label">⚙️ Promedio CPU</div><div class="value" id="promCpu">--</div><div class="unit">%</div></div>
+    <div class="stat-card" id="maxTempCard"><div class="label">🔥 Máxima Temp</div><div class="value" id="maxTemp">--</div><div class="unit">°C</div></div>
+    <div class="stat-card" id="maxCpuCard"><div class="label">📈 Máxima CPU</div><div class="value" id="maxCpu">--</div><div class="unit">%</div></div>
+    <div class="stat-card" id="onlineCard"><div class="label">🟢 Nodos Online</div><div class="value" id="onlineCount">--</div><div class="unit" id="onlineTotal"></div></div>
+</div>
+
+<p style="text-align:right; font-size: 0.85rem; color:#5a6e8a; margin-bottom: 0.5rem;">
+    * Haz clic en el nombre de un nodo para ampliar su gráfica
+</p>
+
+<div id="nodosContainer" class="nodos-grid">
+    <div id="loadingMsg" style="text-align:center; padding:2rem; width:100%;">Cargando datos del clúster...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ═══════════════════════════════════════════════════════════════
+// Dashboard
+// ═══════════════════════════════════════════════════════════════
+const charts = {};
+let fansMeta = {};
+let rangoHoras = 1;
+
+async function loadFansMeta() {
+    try {
+        const res = await fetch('/api/fans');
+        const fans = await res.json();
+        fansMeta = {};
+        fans.forEach(f => { fansMeta[f.pin] = f; });
+    } catch (e) {
+        console.error('Error cargando fans:', e);
+    }
+}
+
+function renderControles(estado) {
+    const container = document.getElementById('controlsContainer');
+    const modo = estado.modo || 'auto';
+
+    let html = `<div class="control-card">
+        <h3>Modo de Control</h3>
+        <div style="display:flex; gap:0.5rem; justify-content:center;">
+            <button class="btn-control ${modo === 'auto' ? 'active' : ''}" onclick="setModo('auto')">Automático</button>
+            <button class="btn-control danger ${modo === 'manual' ? 'active' : ''}" onclick="setModo('manual')">Manual</button>
+        </div>
+    </div>`;
+
+    const pins = ['11', '10', '6', '5', '9'];
+    for (const pin of pins) {
+        const meta = fansMeta[pin] || { name: `Pin ${pin}`, tipo: 'pwm' };
+        const valor = (estado.fans && estado.fans[pin]) ?? 0;
+        const isAuto = modo === 'auto';
+        const isPwm = meta.tipo === 'pwm';
+        const disabled = (isAuto && isPwm) ? 'disabled' : '';
+
+        html += `<div class="control-card" style="${disabled ? 'opacity:0.6;' : ''}">
+            <h3>${meta.name}</h3>
+            <div style="font-size:0.8rem;">Actual: <b id="val-${pin}">${valor}</b></div>`;
+        if (isPwm) {
+            html += `<input type="range" min="0" max="255" value="${valor}" ${disabled}
+                        onchange="setPin('${pin}', this.value)"
+                        oninput="document.getElementById('val-${pin}').innerText = this.value">`;
+        } else {
+            html += `<div style="display:flex; gap:0.5rem; margin-top:5px; justify-content:center;">
+                <button class="btn-control ${valor == 1 ? 'active' : ''}" onclick="setPin('${pin}', 1)">ON</button>
+                <button class="btn-control danger ${valor == 0 ? 'active' : ''}" onclick="setPin('${pin}', 0)">OFF</button>
+            </div>`;
+        }
+        html += `</div>`;
+    }
+    container.innerHTML = html;
+}
+
+async function setModo(modo) {
+    try {
+        const r = await fetch('/api/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ modo })
+        });
+        if (!r.ok) throw new Error((await r.json()).error);
+        toast(`Modo cambiado a ${modo}`, 'success');
+    } catch (e) {
+        toast('Error: ' + e.message, 'error');
+    }
+    setTimeout(refresh, 400);
+}
+
+async function setPin(pin, valor) {
+    try {
+        const r = await fetch(`/api/fans/${pin}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value: parseInt(valor) })
+        });
+        if (!r.ok) throw new Error((await r.json()).error);
+        toast(`Pin ${pin} → ${valor}`, 'success');
+    } catch (e) {
+        toast('Error: ' + e.message, 'error');
+    }
+    setTimeout(refresh, 400);
+}
+
+function toggleAmpliar(nodoID, event) {
+    if (event) event.stopPropagation();
+    const tarjeta = document.getElementById(`card-${nodoID}`);
+    if (!tarjeta) return;
+    if (tarjeta.classList.contains('ampliado')) {
+        tarjeta.classList.remove('ampliado');
+    } else {
+        document.querySelectorAll('.nodo-card.ampliado').forEach(el => el.classList.remove('ampliado'));
+        tarjeta.classList.add('ampliado');
+    }
+}
+
+
+function fmtEjeX(iso, horas) {
+    const d = new Date(iso);
+    if (isNaN(d)) return '?';
+    const HH = String(d.getHours()).padStart(2, '0');
+    const MM = String(d.getMinutes()).padStart(2, '0');
+    const DD = String(d.getDate()).padStart(2, '0');
+    const MO = String(d.getMonth() + 1).padStart(2, '0');
+
+    if (horas <= 2)       return `${HH}:${MM}`;                    // 1-2h: solo hora
+    if (horas <= 12)      return `${HH}:${MM}`;                    // 3-12h: solo hora
+    if (horas <= 24)      return `${HH}:${MM}`;                    // 13-24h: hora
+    if (horas <= 48)      return `${DD}/${MO} ${HH}h`;             // 1-2d: día + hora
+    if (horas <= 168)     return `${DD}/${MO} ${HH}h`;             // 3-7d: día + hora
+    return `${DD}/${MO}`;                                          // >7d: solo día/mes
+}
+
+function getChartTheme() {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    return {
+        text:      dark ? '#e2e8f0' : '#1e293b',
+        muted:     dark ? '#94a3b8' : '#5a6e8a',
+        grid:      dark ? '#334155' : '#e2e8f0',
+        temp:      dark ? '#fb923c' : '#e67e22',   // naranja más brillante en dark
+        cpu:       dark ? '#60a5fa' : '#2c5282',   // azul claro en dark
+        tooltipBg: dark ? '#0f172a' : '#1e293b',
+        tooltipFg: '#f8fafc',
+    };
+}
+
+async function actualizarGrafica(nodoIp, canvasId) {
+    let historico = [];
+    try {
+        const res = await fetch(`/api/thermal/history?node=${encodeURIComponent(nodoIp)}&hours=${rangoHoras}`);
+        if (res.ok) historico = await res.json();
+    } catch (e) {
+        console.warn(`Historial ${nodoIp}:`, e);
+        return;
+    }
+    if (!historico.length) return;
+
+    const labels = historico.map(p => fmtEjeX(p.timestamp, rangoHoras));
+    const temps = historico.map(p => p.temp ?? 0);
+    const cpus  = historico.map(p => p.cpu  ?? 0);
+    const th    = getChartTheme();
+
+    if (charts[nodoIp]) {
+        charts[nodoIp].data.labels = labels;
+        charts[nodoIp].data.datasets[0].data = temps;
+        charts[nodoIp].data.datasets[1].data = cpus;
+        // Reaplicar tema por si cambió
+        charts[nodoIp].data.datasets[0].borderColor = th.temp;
+        charts[nodoIp].data.datasets[0].backgroundColor = th.temp + '20';
+        charts[nodoIp].data.datasets[1].borderColor = th.cpu;
+        charts[nodoIp].options.plugins.legend.labels.color = th.text;
+        charts[nodoIp].options.plugins.tooltip.backgroundColor = th.tooltipBg;
+        charts[nodoIp].options.plugins.tooltip.titleColor = th.tooltipFg;
+        charts[nodoIp].options.plugins.tooltip.bodyColor = th.tooltipFg;
+        charts[nodoIp].options.scales.x.ticks.color = th.muted;
+        charts[nodoIp].options.scales.y.ticks.color = th.muted;
+        charts[nodoIp].options.scales.y.title.color = th.muted;
+        charts[nodoIp].options.scales.y.grid.color = th.grid;
+        charts[nodoIp].options.scales.y1.ticks.color = th.muted;
+        charts[nodoIp].options.scales.y1.title.color = th.muted;
+        charts[nodoIp].update('none');
+        return;
+    }
+
+    const ctx = document.getElementById(canvasId)?.getContext('2d');
+    if (!ctx) return;
+
+    charts[nodoIp] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: '🌡️ Temperatura (°C)',
+                    data: temps,
+                    borderColor: th.temp,
+                    backgroundColor: th.temp + '20',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    borderWidth: 2,
+                    yAxisID: 'y'
+                },
+                {
+                    label: '⚙️ CPU (%)',
+                    data: cpus,
+                    borderColor: th.cpu,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    borderWidth: 2,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        boxWidth: 12,
+                        font: { size: 10 },
+                        color: th.text,
+                    }
+                },
+                tooltip: {
+                    backgroundColor: th.tooltipBg,
+                    titleColor: th.tooltipFg,
+                    bodyColor: th.tooltipFg,
+                    callbacks: {
+                        label: ctx => {
+                            const label = ctx.dataset.label || '';
+                            const v = ctx.raw;
+                            return label.includes('Temperatura')
+                                ? `${label}: ${v.toFixed(1)} °C`
+                                : `${label}: ${v.toFixed(1)} %`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        color: th.muted,
+                        autoSkip: true,
+                        maxRotation: rangoHoras > 24 ? 45 : 0,
+                        maxTicksLimit: rangoHoras > 24 ? 10 : 8,
+                        font: { size: 10 },
+                    },
+                    grid: { color: th.grid },
+                },
+                y: {
+                    title: { display: true, text: 'Temp (°C)', color: th.muted },
+                    min: 20, max: 105,
+                    ticks: { color: th.muted },
+                    grid: { color: th.grid },
+                },
+                y1: {
+                    position: 'right',
+                    title: { display: true, text: 'CPU (%)', color: th.muted },
+                    min: 0, max: 100,
+                    ticks: { color: th.muted },
+                    grid: { drawOnChartArea: false },
+                }
+            }
+        }
+    });
+}
+
+async function _renderNodosOriginal() {
+    try {
+        const estado = await window.fetchEstado();
+        const nodosData = estado.nodes || {};
+        const nodosList = Object.keys(nodosData).sort();
+
+        document.getElementById('promTemp').innerText = (estado.promedios?.temp ?? 0).toFixed(1);
+        document.getElementById('promCpu').innerText  = (estado.promedios?.cpu  ?? 0).toFixed(1);
+        document.getElementById('maxTemp').innerText  = (estado.temp_max ?? 0).toFixed(1);
+        document.getElementById('maxCpu').innerText   = (estado.cpu_max  ?? 0).toFixed(1);
+
+        const tMax = estado.temp_max || 0;
+        document.getElementById('maxTempCard').className = `stat-card ${tMax >= 75 ? 'critical' : (tMax >= 60 ? 'warning' : '')}`;
+        const cMax = estado.cpu_max || 0;
+        document.getElementById('maxCpuCard').className = `stat-card ${cMax >= 85 ? 'critical' : (cMax >= 70 ? 'warning' : '')}`;
+
+        let online = 0;
+        for (const ip of nodosList) {
+            if (nodosData[ip]?.online !== false) online++;
+        }
+        document.getElementById('onlineCount').innerText = online;
+        document.getElementById('onlineTotal').innerText = `de ${nodosList.length}`;
+        document.getElementById('onlineCard').className = `stat-card ${online === nodosList.length ? '' : (online === 0 ? 'critical' : 'warning')}`;
+
+        renderControles(estado);
+
+        const container = document.getElementById('nodosContainer');
+        const loading = document.getElementById('loadingMsg');
+        if (loading) loading.style.display = 'none';
+
+        if (!nodosList.length) {
+            container.innerHTML = '<div style="text-align:center; padding:2rem; width:100%;">⚠️ No se recibieron datos de ningún nodo.</div>';
+            return;
+        }
+
+        for (const ip of nodosList) {
+            const d = nodosData[ip];
+            const id = ip.replace(/\./g, '-');
+            const canvasId = `chart-${id}`;
+            const temp  = d.temp  ?? 0;
+            const cpu   = d.cpu   ?? 0;
+            const ramU  = d.ram_used ?? 0;
+            const ramT  = d.ram_total ?? 0;
+            const disk  = d.disk_pct ?? 0;
+            const online_ = d.online !== false;
+
+            const tempState = !online_ ? 'offline' : (temp >= 75 ? 'crit' : (temp >= 60 ? 'warn' : 'ok'));
+            const ramPct = ramT > 0 ? Math.round(ramU / ramT * 100) : 0;
+
+            let card = document.getElementById(`card-${id}`);
+            if (!card) {
+                container.insertAdjacentHTML('beforeend', `
+                    <div class="nodo-card" id="card-${id}">
+                        <button class="btn-cerrar-zoom" onclick="toggleAmpliar('${id}', event)">✖ Cerrar</button>
+                        <div class="nodo-header" onclick="toggleAmpliar('${id}', event)">
+                            <span class="nodo-nombre">🔍 ${ip}</span>
+                            <span class="nodo-estado badge-estado ${!online_ ? 'offline' : (temp >= 75 ? 'offline' : (temp >= 60 ? 'warning' : ''))}">${online_ ? '● Online' : '○ Offline'}</span>
+                        </div>
+                        <div class="metricas-row">
+                            <div class="metrica"><div class="valor val-temp temp-${tempState}">${temp.toFixed(1)}°</div><div class="etiqueta">Temp</div></div>
+                            <div class="metrica"><div class="valor val-cpu cpu-${cpu >= 85 ? 'crit' : (cpu >= 70 ? 'warn' : 'ok')}">${cpu.toFixed(0)}%</div><div class="etiqueta">CPU</div></div>
+                            <div class="metrica"><div class="valor val-ram ram-${ramPct >= 90 ? 'crit' : (ramPct >= 75 ? 'warn' : 'ok')}">${ramPct}%</div><div class="etiqueta">RAM</div></div>
+                            <div class="metrica"><div class="valor val-disk disk-${disk >= 85 ? 'crit' : (disk >= 70 ? 'warn' : 'ok')}">${disk.toFixed(0)}%</div><div class="etiqueta">Disco</div></div>
+                        </div>
+                        <div class="grafico-container" onclick="toggleAmpliar('${id}', event)">
+                            <canvas id="${canvasId}"></canvas>
+                        </div>
+                    </div>
+                `);
+            } else {
+                const vt = card.querySelector('.val-temp');
+                vt.innerText = `${temp.toFixed(1)}°`;
+                vt.className = `valor val-temp temp-${tempState}`;
+
+                const vc = card.querySelector('.val-cpu');
+                vc.innerText = `${cpu.toFixed(0)}%`;
+                vc.className = `valor val-cpu cpu-${cpu >= 85 ? 'crit' : (cpu >= 70 ? 'warn' : 'ok')}`;
+
+                const vr = card.querySelector('.val-ram');
+                vr.innerText = `${ramPct}%`;
+                vr.className = `valor val-ram ram-${ramPct >= 90 ? 'crit' : (ramPct >= 75 ? 'warn' : 'ok')}`;
+
+                const vd = card.querySelector('.val-disk');
+                vd.innerText = `${disk.toFixed(0)}%`;
+                vd.className = `valor val-disk disk-${disk >= 85 ? 'crit' : (disk >= 70 ? 'warn' : 'ok')}`;
+                const badge = card.querySelector('.badge-estado');
+                badge.innerText = online_ ? '● Online' : '○ Offline';
+                badge.className = `nodo-estado badge-estado ${!online_ ? 'offline' : (temp >= 75 ? 'offline' : (temp >= 60 ? 'warning' : ''))}`;
+            }
+
+            if (online_ && temp > 0 && window._refrescarGraficas !== false) {
+                actualizarGrafica(ip, canvasId);
+            }
+        }
+    } catch (error) {
+        console.error('Error en renderNodos:', error);
+        document.getElementById('nodosContainer').innerHTML =
+            `<div style="text-align:center; padding:2rem; width:100%; color:#e53e3e;">❌ Error: ${error.message}</div>`;
+    }
+}
+
+async function refresh() { await renderNodos(); }
+
+// ── Toolbar de rango (insertado por JS) ───────────────────
+function insertarToolbar() {
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = 'display:flex; gap: 0.6rem; align-items:center; margin-bottom: 1rem; flex-wrap:wrap;';
+    toolbar.innerHTML = `
+        <span style="font-size: 0.85rem; color: #5a6e8a;">Rango de las gráficas:</span>
+        <select id="rangeDash" style="padding: 0.4rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1;">
+            <option value="1">1 hora</option>
+            <option value="6">6 horas</option>
+            <option value="24">24 horas</option>
+            <option value="168">7 días</option>
+        </select>
+        <button class="btn" onclick="refresh()" style="padding: 0.4rem 1rem;">🔄 Refrescar</button>
+    `;
+    const nodosContainer = document.getElementById('nodosContainer');
+    nodosContainer.parentNode.insertBefore(toolbar, nodosContainer);
+
+    document.getElementById('rangeDash').addEventListener('change', e => {
+        rangoHoras = parseInt(e.target.value);
+        Object.keys(charts).forEach(k => { charts[k].destroy(); delete charts[k]; });
+        renderNodos();
+    });
+}
+
+// ── Arranque ──────────────────────────────────────────────
+
+// ── Re-renderizar gráficas al cambiar el tema ────────────
+window.addEventListener('themechange', () => {
+    Object.keys(charts).forEach(k => {
+        charts[k].destroy();
+        delete charts[k];
+    });
+    renderNodos();
+});
+
+// Refresca UI a 15s pero las gráficas solo a 60s (optimización CPU)
+let _ultimoRefreshGraficas = 0;
+async function renderNodos(force_charts = false) {
+    const ahora = Date.now();
+    const refrescar_graficas = force_charts || (ahora - _ultimoRefreshGraficas > 60000);
+    if (refrescar_graficas) _ultimoRefreshGraficas = ahora;
+    return _renderNodosInterno(refrescar_graficas);
+}
+
+async function _renderNodosInterno(refrescar_graficas) {
+    // ...cuerpo original
+    try { return await _renderNodosOriginal(); } catch(e) { console.error(e); }
+}
+
+(async () => {
+    insertarToolbar();
+    await loadFansMeta();
+    await renderNodos(true);
+    setInterval(() => renderNodos(false), 15000);
+})();
+</script>
+{% endblock %}

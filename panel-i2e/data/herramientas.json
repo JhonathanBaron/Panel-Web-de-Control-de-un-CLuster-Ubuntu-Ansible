@@ -1,0 +1,80 @@
+{
+  "categorias": [
+    {
+      "nombre": "Compiladores",
+      "herramientas": [
+        "gcc",
+        "g++",
+        "clang",
+        "cmake",
+        "make"
+      ]
+    },
+    {
+      "nombre": "Lenguajes",
+      "herramientas": [
+        "python3",
+        "java",
+        "go",
+        "rustc",
+        "node",
+        "R"
+      ]
+    },
+    {
+      "nombre": "Python/CI",
+      "herramientas": [
+        "jupyter",
+        "conda",
+        "pip3"
+      ]
+    },
+    {
+      "nombre": "Paralelo",
+      "herramientas": [
+        "mpirun",
+        "mpicc",
+        "mpiexec"
+      ]
+    },
+    {
+      "nombre": "Seguridad",
+      "herramientas": [
+        "nmap",
+        "tcpdump",
+        "tshark",
+        "john",
+        "hashcat",
+        "hydra",
+        "sqlmap"
+      ]
+    },
+    {
+      "nombre": "Redes",
+      "herramientas": [
+        "iperf3",
+        "mtr",
+        "whois",
+        "mininet"
+      ]
+    },
+    {
+      "nombre": "Contenedores",
+      "herramientas": [
+        "docker",
+        "apptainer"
+      ]
+    },
+    {
+      "nombre": "Utilidades",
+      "herramientas": [
+        "git",
+        "tmux",
+        "vim",
+        "htop",
+        "rsync",
+        "jq"
+      ]
+    }
+  ]
+}

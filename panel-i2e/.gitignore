@@ -1,0 +1,52 @@
+# ─── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ─── Virtual envs ─────────────────────────────────────────────
+venv/
+env/
+.venv/
+ENV/
+
+# ─── Secretos y datos sensibles ───────────────────────────────
+data/credentials.enc
+data/nodes.json
+data/master.key
+data/audit.jsonl
+data/metrics.jsonl
+data/tasks/
+data/inventory-backups/
+data/playbooks-backup/
+config.local.py
+*.pem
+*.key
+
+# ─── Runtime / backups ────────────────────────────────────────
+logs/
+.backups/
+*.log
+*.bak
+*.bak.*
+
+# ─── Parches viejos (ya no se usan) ───────────────────────────
+patch_fase*.py
+app.py.bak.*
+
+# ─── Editores / OS ────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ─── Otros ────────────────────────────────────────────────────
+*.swp
+*~
+.coverage
+htmlcov/
+.env
+data/ssh_panel_key
+data/ssh_panel_key.pub
+contexto_panel_i2e.txt

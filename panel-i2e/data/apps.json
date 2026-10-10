@@ -1,0 +1,125 @@
+{
+  "apps": [
+    {
+      "check": {
+        "tipo": "url",
+        "valor": "/"
+      },
+      "descripcion": "Motor de procesamiento distribuido",
+      "estado": "inactivo",
+      "host": "10.4.8.10",
+      "icono": "⚡",
+      "id": "spark",
+      "nombre": "Spark",
+      "proto": "http",
+      "puerto": 8080,
+      "start": {
+        "tipo": "playbook",
+        "valor": "19_spark_start.yml"
+      },
+      "stop": {
+        "tipo": "playbook",
+        "valor": "19_spark_stop.yml"
+      },
+      "uninstall": {
+        "tipo": "playbook",
+        "valor": "19_spark_uninstall.yml"
+      },
+      "url": "http://10.4.8.10:8080"
+    },
+    {
+      "check": {
+        "tipo": "cmd",
+        "valor": "/srv/nas/tools/miniforge/envs/ray/bin/ray status --address=10.4.8.10:6380"
+      },
+      "descripcion": "Framework de cómputo distribuido",
+      "estado": "inactivo",
+      "host": "10.4.8.10",
+      "icono": "☀️",
+      "id": "ray",
+      "nombre": "Ray",
+      "proto": "http",
+      "puerto": 8265,
+      "start": {
+        "tipo": "playbook",
+        "valor": "18_ray.yml"
+      },
+      "stop": {
+        "tipo": "systemd",
+        "valor": "none"
+      },
+      "uninstall": {
+        "tipo": "playbook",
+        "valor": "18_ray_uninstall.yml"
+      },
+      "url": "http://10.4.8.10:8265"
+    },
+    {
+      "check": {
+        "tipo": "url",
+        "valor": "/hub/login"
+      },
+      "descripcion": "Cuadernos interactivos multi-usuario",
+      "estado": "inactivo",
+      "host": "10.4.8.10",
+      "icono": "📓",
+      "id": "jupyter",
+      "nombre": "JupyterHub",
+      "proto": "http",
+      "puerto": 8888,
+      "start": {
+        "tipo": "systemd",
+        "valor": "jupyterhub"
+      },
+      "stop": {
+        "tipo": "systemd",
+        "valor": "jupyterhub"
+      },
+      "uninstall": {
+        "tipo": "playbook",
+        "valor": "17_jupyterhub_uninstall.yml"
+      },
+      "url": "http://10.4.8.10:8888"
+    },
+    {
+      "check": {
+        "tipo": "url",
+        "valor": "/"
+      },
+      "descripcion": "Gestión visual de contenedores Docker",
+      "estado": "inactivo",
+      "host": "10.4.8.10",
+      "icono": "🐳",
+      "id": "portainer",
+      "nombre": "Portainer",
+      "proto": "https",
+      "puerto": 9443,
+      "start": null,
+      "stop": null,
+      "uninstall": null,
+      "url": "https://10.4.8.10:9443"
+    },
+    {
+      "id": "mlflow",
+      "nombre": "MLflow",
+      "icono": "〽",
+      "host": "10.4.8.10",
+      "puerto": 5000,
+      "proto": "http",
+      "descripcion": "Tracking de experimentos ML",
+      "check": {
+        "tipo": "url",
+        "valor": "/"
+      },
+      "start": {
+        "tipo": "systemd",
+        "valor": "mlflow"
+      },
+      "stop": {
+        "tipo": "systemd",
+        "valor": "mlflow"
+      },
+      "uninstall": null
+    }
+  ]
+}

@@ -1,0 +1,469 @@
+{% extends "base.html" %}
+{% set active_tab = 'nodos' %}
+{% block title %}Nodos · Cluster Panel I2E{% endblock %}
+{% block header_title %}🖥️ Gestión y Supervisión de Nodos{% endblock %}
+{% block header_sub %}Añadir · editar · eliminar · ver detalle con gráficas{% endblock %}
+
+{% block content %}
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+    <div style="color: #5a6e8a; font-size: 0.9rem;">
+        <b id="nodeCount">--</b> nodos registrados · <b id="nodeOnline">--</b> en línea
+    </div>
+    <button class="btn btn-primary" onclick="abrirModalNodo()">➕ Añadir nodo</button>
+</div>
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>IP</th>
+                <th>Grupo / Rol</th>
+                <th>Estado</th>
+                <th>Temp</th>
+                <th>CPU</th>
+                <th>RAM</th>
+                <th>Disco</th>
+                <th style="width: 220px;">Acciones</th>
+            </tr>
+        </thead>
+        <tbody id="tablaNodosBody">
+            <tr><td colspan="9" style="text-align:center; padding: 2rem; color:#94a3b8;">Cargando...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal: crear/editar nodo -->
+<div class="modal-bg" id="modalNodo">
+    <div class="modal">
+        <h2 id="modalNodoTitulo">Añadir nodo</h2>
+        <input type="hidden" id="modalNodoId">
+
+        <div class="form-group">
+            <label>IP *</label>
+            <input type="text" id="fIp" placeholder="10.4.8.20" autocomplete="off">
+        </div>
+        <div class="form-group">
+            <label>Nombre</label>
+            <input type="text" id="fName" placeholder="node-20" autocomplete="off">
+        </div>
+        <div class="form-group">
+            <label>MAC (para WOL, opcional)</label>
+            <input type="text" id="fMac" placeholder="aa:bb:cc:dd:ee:ff" autocomplete="off">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;">
+            <div class="form-group">
+                <label>Grupo</label>
+                <select id="fGroup">
+                    <option value="workers">workers</option>
+                    <option value="manager">manager</option>
+                    <option value="nas">nas</option>
+                    <option value="gpu">gpu</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Rol</label>
+                <select id="fRole">
+                    <option value="worker">worker</option>
+                    <option value="manager">manager</option>
+                    <option value="storage">storage</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Notas</label>
+            <textarea id="fNotes" rows="2" placeholder="Comentarios sobre el nodo..."></textarea>
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="fEnabled" checked> Habilitado (participa en el monitoreo)
+            </label>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn" onclick="cerrarModalNodo()">Cancelar</button>
+            <button class="btn btn-primary" onclick="guardarNodo()">💾 Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: detalle de nodo -->
+<div class="modal-bg" id="modalDetalle">
+    <div class="modal" style="max-width: 1100px; width: 94vw;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+            <h2 id="detalleTitulo">Detalle del nodo</h2>
+            <button class="btn" onclick="cerrarDetalle()">✖ Cerrar</button>
+        </div>
+
+        <div style="display:flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; align-items:center;">
+            <label style="font-size: 0.85rem; color:#5a6e8a;">Rango:</label>
+            <select id="detailRange" style="padding: 0.4rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1;">
+                <option value="1" selected>1 hora</option>
+                <option value="6">6 horas</option>
+                <option value="24">24 horas</option>
+                <option value="168">7 días</option>
+                <option value="720">30 días</option>
+            </select>
+            <label style="font-size: 0.85rem; color:#5a6e8a; margin-left: 0.5rem;">Métricas:</label>
+            <label style="font-size: 0.85rem;"><input type="checkbox" class="mSel" value="temp" checked> Temp</label>
+            <label style="font-size: 0.85rem;"><input type="checkbox" class="mSel" value="cpu" checked> CPU</label>
+            <label style="font-size: 0.85rem;"><input type="checkbox" class="mSel" value="ram"> RAM</label>
+            <label style="font-size: 0.85rem;"><input type="checkbox" class="mSel" value="disk"> Disco</label>
+            <label style="font-size: 0.85rem;"><input type="checkbox" class="mSel" value="load"> Load</label>
+        </div>
+
+        <div id="detailStats" class="stats-grid" style="margin-bottom: 1rem; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
+            <p style="color: #94a3b8; text-align: center; grid-column: 1 / -1;">Cargando estadísticas...</p>
+        </div>
+
+        <div style="position: relative; height: 340px; margin-bottom: 1.5rem;">
+            <canvas id="chartDetalle"></canvas>
+        </div>
+
+        <div class="detail-section">
+            <h3>📌 Información en vivo (consultada ahora)</h3>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.6rem;">
+                <button class="btn btn-primary" onclick="cargarDetalleVivo()">🔄 Consultar ahora</button>
+            </div>
+            <div id="detalleVivoContenido" style="font-family: monospace; font-size: 0.8rem; color: #334155; background: #f8fafc; border-radius: 8px; padding: 0.8rem 1rem; max-height: 400px; overflow: auto; white-space: pre-wrap;">
+                Haz clic en "Consultar ahora" para ver procesos, uptime, discos...
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let chartDetalle = null;
+let nodoActual = null;
+
+async function cargarTabla() {
+    const [nodes, estado] = await Promise.all([
+        fetch('/api/nodes').then(r => r.json()),
+        fetch('/api/estado').then(r => r.json())
+    ]);
+
+    const liveNodes = estado.nodes || {};
+    document.getElementById('nodeCount').innerText = nodes.length;
+
+    let online = 0;
+    const tbody = document.getElementById('tablaNodosBody');
+
+    if (!nodes.length) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding: 2rem; color:#94a3b8;">No hay nodos registrados</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = nodes.map(n => {
+        const live = liveNodes[n.ip] || {};
+        const isOnline = live.online !== false && (live.temp || live.cpu);
+        if (isOnline) online++;
+
+        const temp = live.temp ?? 0;
+        const cpu = live.cpu ?? 0;
+        const ramPct = live.ram_total > 0 ? Math.round(live.ram_used / live.ram_total * 100) : 0;
+        const disk = live.disk_pct ?? 0;
+
+        const tempState = temp >= 75 ? 'crit' : temp >= 60 ? 'warn' : 'ok';
+        const cpuState  = cpu  >= 85 ? 'crit' : cpu  >= 70 ? 'warn' : 'ok';
+        const ramState  = ramPct >= 90 ? 'crit' : ramPct >= 75 ? 'warn' : 'ok';
+        const diskState = disk >= 85 ? 'crit' : disk >= 70 ? 'warn' : 'ok';
+
+        return `
+            <tr>
+                <td><b>${escapeHtml(n.name || n.ip)}</b></td>
+                <td style="font-family: monospace;">${n.ip}</td>
+                <td><span class="badge badge-node">${n.group || '—'}</span> <span style="font-size:0.75rem; color:#94a3b8;">${n.role || ''}</span></td>
+                <td><span class="nodo-estado badge-estado ${isOnline ? '' : 'offline'}">${isOnline ? '● Online' : '○ Offline'}</span></td>
+                <td class="val-temp temp-${tempState}" style="font-weight:600;">${temp ? temp.toFixed(1) + '°' : '—'}</td>
+                <td class="val-cpu cpu-${cpuState}" style="font-weight:600;">${cpu ? cpu.toFixed(0) + '%' : '—'}</td>
+                <td class="val-ram ram-${ramState}" style="font-weight:600;">${ramPct ? ramPct + '%' : '—'}</td>
+                <td class="val-disk disk-${diskState}" style="font-weight:600;">${disk ? disk.toFixed(0) + '%' : '—'}</td>
+                <td>
+                    <button class="btn" style="padding:0.3rem 0.7rem; font-size:0.78rem;" onclick='verDetalle(${JSON.stringify(n.ip)})'>📊 Detalle</button>
+                    <button class="btn" style="padding:0.3rem 0.7rem; font-size:0.78rem;" onclick='editarNodo(${JSON.stringify(n)})'>✏️</button>
+                    <button class="btn btn-danger" style="padding:0.3rem 0.7rem; font-size:0.78rem;" onclick='eliminarNodo(${n.id}, ${JSON.stringify(n.name || n.ip)})'>🗑</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    document.getElementById('nodeOnline').innerText = online;
+}
+
+function abrirModalNodo() {
+    document.getElementById('modalNodoTitulo').innerText = 'Añadir nodo';
+    document.getElementById('modalNodoId').value = '';
+    document.getElementById('fIp').value = '';
+    document.getElementById('fName').value = '';
+    document.getElementById('fMac').value = '';
+    document.getElementById('fGroup').value = 'workers';
+    document.getElementById('fRole').value = 'worker';
+    document.getElementById('fNotes').value = '';
+    document.getElementById('fEnabled').checked = true;
+    document.getElementById('modalNodo').classList.add('show');
+}
+
+function editarNodo(n) {
+    document.getElementById('modalNodoTitulo').innerText = 'Editar nodo';
+    document.getElementById('modalNodoId').value = n.id;
+    document.getElementById('fIp').value = n.ip || '';
+    document.getElementById('fName').value = n.name || '';
+    document.getElementById('fMac').value = n.mac || '';
+    document.getElementById('fGroup').value = n.group || 'workers';
+    document.getElementById('fRole').value = n.role || 'worker';
+    document.getElementById('fNotes').value = n.notes || '';
+    document.getElementById('fEnabled').checked = !!n.enabled;
+    document.getElementById('modalNodo').classList.add('show');
+}
+
+function cerrarModalNodo() {
+    document.getElementById('modalNodo').classList.remove('show');
+}
+
+async function guardarNodo() {
+    const id = document.getElementById('modalNodoId').value;
+    const payload = {
+        ip: document.getElementById('fIp').value.trim(),
+        name: document.getElementById('fName').value.trim(),
+        mac: document.getElementById('fMac').value.trim() || null,
+        group: document.getElementById('fGroup').value,
+        role: document.getElementById('fRole').value,
+        notes: document.getElementById('fNotes').value.trim() || null,
+        enabled: document.getElementById('fEnabled').checked,
+    };
+    if (!payload.ip) { toast('IP es obligatoria', 'error'); return; }
+
+    const url = id ? `/api/nodes/${id}` : '/api/nodes';
+    const method = id ? 'PUT' : 'POST';
+    try {
+        const r = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        toast(id ? 'Nodo actualizado' : 'Nodo añadido', 'success');
+        cerrarModalNodo();
+        cargarTabla();
+    } catch (e) {
+        toast('Error: ' + e.message, 'error');
+    }
+}
+
+async function eliminarNodo(id, nombre) {
+    if (!confirm(`¿Eliminar el nodo ${nombre}? Esta acción no se puede deshacer.`)) return;
+    try {
+        const r = await fetch(`/api/nodes/${id}`, { method: 'DELETE' });
+        if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
+        toast('Nodo eliminado', 'success');
+        cargarTabla();
+    } catch (e) {
+        toast('Error: ' + e.message, 'error');
+    }
+}
+
+async function verDetalle(ip) {
+    nodoActual = ip;
+    document.getElementById('detalleTitulo').innerText = `📊 ${ip}`;
+    document.getElementById('modalDetalle').classList.add('show');
+    document.getElementById('detalleStats').innerHTML =
+        '<p style="color: #94a3b8; text-align: center; grid-column: 1 / -1;">Cargando...</p>';
+    document.getElementById('detalleVivoContenido').innerText =
+        'Haz clic en "Consultar ahora" para ver procesos, uptime, discos...';
+
+    await cargarStats(ip);
+    await cargarSerie(ip);
+}
+
+function cerrarDetalle() {
+    document.getElementById('modalDetalle').classList.remove('show');
+    nodoActual = null;
+}
+
+async function cargarStats(ip) {
+    const horas = document.getElementById('detailRange').value;
+    const r = await fetch(`/api/stats?node=${ip}&hours=${horas}`);
+    const data = await r.json();
+
+    if (!data.metrics || data.count === 0) {
+        document.getElementById('detalleStats').innerHTML =
+            '<p style="color: #94a3b8; text-align: center; grid-column: 1 / -1;">Sin datos en este rango</p>';
+        return;
+    }
+
+    const m = data.metrics;
+    const cards = [
+        { label: '🌡️ Temp',  s: m.temp,     unit: '°C' },
+        { label: '⚙️ CPU',   s: m.cpu,      unit: '%' },
+        { label: '🧠 RAM',   s: m.ram_pct,  unit: '%' },
+        { label: '💾 Disco', s: m.disk_pct, unit: '%' },
+        { label: '📈 Load',  s: m.load1,    unit: '' },
+    ];
+
+    document.getElementById('detalleStats').innerHTML = cards.map(c => {
+        if (!c.s) return '';
+        return `
+            <div class="stat-card" style="padding: 0.7rem 0.9rem;">
+                <div class="label" style="font-size: 0.65rem;">${c.label}</div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #5a6e8a; margin-top: 4px;">
+                    <span>min <b style="color:#1e293b;">${c.s.min}${c.unit}</b></span>
+                    <span>avg <b style="color:#1e293b;">${c.s.avg}${c.unit}</b></span>
+                    <span>max <b style="color:#c53030;">${c.s.max}${c.unit}</b></span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+
+
+function fmtEjeX(iso, horas) {
+    const d = new Date(iso);
+    if (isNaN(d)) return '?';
+    const HH = String(d.getHours()).padStart(2, '0');
+    const MM = String(d.getMinutes()).padStart(2, '0');
+    const DD = String(d.getDate()).padStart(2, '0');
+    const MO = String(d.getMonth() + 1).padStart(2, '0');
+    if (horas <= 24)  return `${HH}:${MM}`;
+    if (horas <= 168) return `${DD}/${MO} ${HH}h`;
+    return `${DD}/${MO}`;
+}
+
+function getChartTheme() {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    return {
+        text:  dark ? '#e2e8f0' : '#1e293b',
+        muted: dark ? '#94a3b8' : '#5a6e8a',
+        grid:  dark ? '#334155' : '#e2e8f0',
+        tooltipBg: dark ? '#0f172a' : '#1e293b',
+        tooltipFg: '#f8fafc',
+        temp:  dark ? '#fb923c' : '#e67e22',
+        cpu:   dark ? '#60a5fa' : '#2c5282',
+        ram:   dark ? '#34d399' : '#10b981',
+        disk:  dark ? '#c4b5fd' : '#8b5cf6',
+        load:  dark ? '#cbd5e1' : '#64748b',
+    };
+}
+
+async function cargarSerie(ip) {
+    const horas = document.getElementById('detailRange').value;
+    const metrics = Array.from(document.querySelectorAll('.mSel:checked')).map(x => x.value);
+    if (!metrics.length) { toast('Selecciona al menos una métrica', 'warning'); return; }
+
+    const r = await fetch(`/api/thermal/series?nodes=${ip}&hours=${horas}&metrics=${metrics.join(',')}&bucket=5`);
+    const data = await r.json();
+    const puntos = data.series[ip] || [];
+
+    if (!puntos.length) {
+        if (chartDetalle) { chartDetalle.destroy(); chartDetalle = null; }
+        return;
+    }
+
+    const horasNum = parseInt(document.getElementById('detailRange').value);
+    const labels = puntos.map(p => fmtEjeX(p.t, horasNum));
+
+    const th = getChartTheme();
+    const colores = { temp: th.temp, cpu: th.cpu, ram: th.ram, disk: th.disk, load: th.load };
+    const nombres = { temp: 'Temp (°C)', cpu: 'CPU (%)', ram: 'RAM (%)', disk: 'Disco (%)', load: 'Load' };
+
+    const datasets = metrics.map(m => ({
+        label: nombres[m],
+        data: puntos.map(p => p[m]),
+        borderColor: colores[m],
+        backgroundColor: colores[m] + '20',
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.3,
+        spanGaps: true,
+    }));
+
+    if (chartDetalle) { chartDetalle.destroy(); chartDetalle = null; }
+
+    const ctx = document.getElementById('chartDetalle').getContext('2d');
+    chartDetalle = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { boxWidth: 12, font: { size: 11 }, color: th.text }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: th.tooltipBg,
+                    titleColor: th.tooltipFg,
+                    bodyColor: th.tooltipFg,
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: th.muted,
+                        autoSkip: true,
+                        maxRotation: horasNum > 24 ? 45 : 0,
+                        maxTicksLimit: 10,
+                        font: { size: 10 }
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: th.grid },
+                    ticks: { color: th.muted },
+                }
+            }
+        }
+    });
+}
+
+async function cargarDetalleVivo() {
+    if (!nodoActual) return;
+    const cont = document.getElementById('detalleVivoContenido');
+    cont.innerText = '⏳ Consultando... (puede tardar unos segundos)';
+    try {
+        const r = await fetch(`/api/nodes/${nodoActual}/detail`);
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+
+        const s = data.sections || {};
+        let texto = '';
+        for (const [nombre, lineas] of Object.entries(s)) {
+            texto += `\n━━━ ${nombre} ━━━\n`;
+            texto += lineas.join('\n');
+            texto += '\n';
+        }
+        cont.innerText = texto.trim() || '(sin datos)';
+    } catch (e) {
+        cont.innerText = '❌ Error: ' + e.message;
+    }
+}
+
+document.getElementById('detailRange').addEventListener('change', () => {
+    if (nodoActual) { cargarStats(nodoActual); cargarSerie(nodoActual); }
+});
+document.addEventListener('change', e => {
+    if (e.target.classList.contains('mSel') && nodoActual) cargarSerie(nodoActual);
+});
+
+cargarTabla();
+setInterval(cargarTabla, 15000);
+</script>
+{% endblock %}
+
+window.addEventListener('themechange', () => {
+    if (nodoActual) {
+        if (chartDetalle) { chartDetalle.destroy(); chartDetalle = null; }
+        cargarSerie(nodoActual);
+    }
+});

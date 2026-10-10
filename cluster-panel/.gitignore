@@ -1,0 +1,29 @@
+# Entorno virtual
+venv/
+env/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Base de datos
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/*.db-journal
+
+# Logs
+logs/*.log
+logs/*.txt
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Secretos
+.env
+.env.*
+!.env.example

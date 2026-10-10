@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Login — Panel I2E</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'IBM Plex Sans', system-ui, sans-serif;
+               background: #f2f3f5; display: flex; align-items: center;
+               justify-content: center; min-height: 100vh; }
+        .card { background: #fff; border: 1px solid #d0d4da; border-radius: 12px;
+                padding: 32px; width: 360px; box-shadow: 0 8px 30px rgba(0,0,0,.05); }
+        h1 { font-size: 18px; margin-bottom: 6px; }
+        p.sub { color: #8494a4; font-size: 12px; margin-bottom: 24px; }
+        label { display: block; font-size: 11px; text-transform: uppercase;
+                color: #8494a4; letter-spacing: 0.5px; margin-bottom: 5px; font-weight: 600; }
+        input { width: 100%; padding: 9px 11px; border: 1px solid #d0d4da;
+                border-radius: 8px; font-family: inherit; font-size: 13px; margin-bottom: 14px; }
+        input:focus { outline: none; border-color: #1a5fa0; }
+        button { width: 100%; padding: 10px; border: 1px solid #1a5fa0; border-radius: 8px;
+                 background: #1a5fa0; color: white; cursor: pointer;
+                 font-size: 13px; font-weight: 500; }
+        button:hover { background: #155087; }
+        .error { color: #a82820; background: #fbeeec; border: 1px solid #e0b0ac;
+                 padding: 8px 10px; border-radius: 6px; font-size: 12px; margin-bottom: 14px; }
+        .input-wrap { position: relative; }
+        .input-wrap input { padding-right: 42px; }
+        .toggle-pass {
+            position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+            background: transparent; border: none; cursor: pointer;
+            color: #8494a4; font-size: 16px; padding: 4px 8px;
+            width: auto; margin: 0;
+        }
+        .toggle-pass:hover { background: transparent; color: #1a5fa0; }
+        .ayuda-pass {
+            margin-top: 16px; padding-top: 14px; border-top: 1px solid #e4e6ea;
+            font-size: 11px; color: #8494a4; text-align: center; line-height: 1.5;
+        }
+        .ayuda-pass code {
+            font-family: 'IBM Plex Mono', monospace;
+            background: #f7f8f9; padding: 1px 5px; border-radius: 3px;
+            color: #4a5568; font-size: 10.5px;
+        }
+    </style>
+</head>
+<body>
+    <form class="card" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <h1>📡 Panel de Control I2E</h1>
+        <p class="sub">Inicia sesión para acceder al clúster</p>
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <label>Usuario</label>
+        <input type="text" name="usuario" autocomplete="username" autofocus>
+        <label>Contraseña</label>
+        <div class="input-wrap">
+            <input type="password" name="password" id="pass-input" autocomplete="current-password">
+            <button type="button" class="toggle-pass" id="toggle-pass" title="Ver contraseña">👁</button>
+        </div>
+        <button type="submit">Entrar</button>
+        <div class="ayuda-pass">
+            ¿Olvidaste tu contraseña?<br>
+            Pídele al administrador que ejecute<br>
+            <code>python3 reset-password.py USUARIO</code>
+        </div>
+    </form>
+<script>
+(function() {
+    const input = document.getElementById('pass-input');
+    const btn = document.getElementById('toggle-pass');
+    if (!input || !btn) return;
+    btn.addEventListener('click', () => {
+        const tipo = input.type === 'password' ? 'text' : 'password';
+        input.type = tipo;
+        btn.textContent = tipo === 'password' ? '👁' : '🙈';
+        btn.title = tipo === 'password' ? 'Ver contraseña' : 'Ocultar contraseña';
+    });
+})();
+</script>
+
+<script>
+// Si la sesión se invalida (por ejemplo, login en otra pestaña),
+// recargamos el token al volver al foco.
+let _focusedOnce = false;
+window.addEventListener('focus', async () => {
+    if (!_focusedOnce) { _focusedOnce = true; return; }
+    try {
+        const r = await fetch('/login', { credentials: 'same-origin' });
+        if (r.status === 200) {
+            // El servidor devuelve el mismo HTML con un token fresco
+            const html = await r.text();
+            const match = html.match(/name="csrf_token"\s+value="([^"]+)"/);
+            if (match) {
+                const input = document.querySelector('input[name="csrf_token"]');
+                if (input && input.value !== match[1]) {
+                    input.value = match[1];
+                }
+            }
+        }
+    } catch (e) { /* silencio */ }
+});
+</script>
+</body>
+</html>

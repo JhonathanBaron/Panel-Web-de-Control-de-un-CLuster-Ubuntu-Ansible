@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>Panel de Control I2E</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/panel.css">
+    <link rel="stylesheet" href="/static/css/panel-v2.css">
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+</head>
+<body data-role="{{ role }}">
+
+<header>
+    <button id="hdr-menu" title="Menú"><span data-ico="menu"></span></button>
+    <span class="hdr-title"><span data-ico="radar"></span>Panel de Control I2E</span>
+    <span class="hdr-sub">control@{{ request.host }}</span>
+    <div class="hdr-right">
+        <span class="hdr-user">{{ usuario }}</span>
+        <span class="hdr-badge">{{ role }}</span>
+        <span class="hdr-status">● en línea</span>
+        <span id="hdr-tareas" class="hdr-tareas oculto"></span>
+        <button class="hdr-btn" onclick="modalCambiarPassword()" title="Cambiar contraseña"><span data-ico="key"></span></button>
+        <button class="hdr-btn" id="theme-btn" onclick="toggleTema()">🌙</button>
+        <a class="hdr-logout" href="/logout">Salir</a>
+    </div>
+</header>
+
+<div id="sidebar-backdrop"></div>
+<div class="layout{% if role not in ['admin', 'operator'] %} no-sidebar{% endif %}">
+{% if role in ['admin', 'operator', 'student'] %}
+<aside class="sidebar">
+    <div class="sec">
+        <div class="sec-head" onclick="plegar(this)"><span data-ico="target"></span>Nodo objetivo <span class="arr">▾</span></div>
+        <div class="sec-body">
+            <select id="objetivo">
+                <option value="all">Cargando inventario…</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="sec">
+        <div class="sec-head" onclick="plegar(this)"><span data-ico="pulse"></span>Diagnóstico <span class="arr">▾</span></div>
+        <div class="sec-body">
+            <button class="btn btn-b w100" onclick="irATerminalYEjecutar('ping -c 3 10.4.8.10')">Ping al manager</button>
+            <div class="g2">
+                <button class="btn btn-n" onclick="irATerminalYEjecutar('free -h')">RAM</button>
+                <button class="btn btn-n" onclick="irATerminalYEjecutar('df -h')">Disco</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="sec">
+        <div class="sec-head" onclick="plegar(this)"><span data-ico="zap"></span>Energía <span class="arr">▾</span></div>
+        <div class="sec-body">
+            <button class="btn btn-a w100" onclick="wolTodos()" title="Envía WOL a los nodos con wol=true">Wake-on-LAN (todos)</button>
+            <button class="btn btn-b w100" onclick="detectarMacsAuto()" title="Obtiene las MACs vía ansible y las guarda"><span data-ico="search"></span>Detectar MACs auto</button>
+            <div class="g2">
+                <button class="btn btn-n" onclick="if(confirm('¿Reiniciar?'))cmdRapido('reboot')">Reiniciar</button>
+                <button class="btn btn-r" onclick="if(confirm('¿Apagar?'))cmdRapido('poweroff')">Apagar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="sec">
+        <div class="sec-head" onclick="plegar(this)"><span data-ico="terminal"></span>Comando libre <span class="arr">▾</span></div>
+        <div class="sec-body">
+            <input type="text" id="txt-cmd" placeholder="ej: uptime">
+            <button class="btn btn-b w100" onclick="cmdLibre()">Ejecutar</button>
+        </div>
+    </div>
+</aside>
+{% endif %}
+
+<div class="content-area">
+    <div class="tabs-bar">
+        <div class="tab activo" data-tab="estado" onclick="cambiarTab('estado')"><span data-ico="chart"></span>Estado</div>
+        <div class="tab" data-tab="apps" onclick="cambiarTab('apps')"><span data-ico="rocket"></span>Aplicaciones</div>
+        <div class="tab" data-tab="nas" onclick="cambiarTab('nas')"><span data-ico="folder"></span>Mi NAS</div>
+{% if role in ['admin', 'operator', 'student'] %}
+        <div class="tab" data-tab="usuarios" onclick="cambiarTab('usuarios')"><span data-ico="users"></span>Usuarios del clúster</div>
+        <div class="tab" data-tab="herramientas" onclick="cambiarTab('herramientas')"><span data-ico="wrench"></span>Herramientas</div>
+        <div class="tab" data-tab="terminal" onclick="cambiarTab('terminal')"><span data-ico="terminal"></span>Terminal</div>
+        <div class="tab" data-tab="playbooks" onclick="cambiarTab('playbooks')"><span data-ico="book"></span>Playbooks</div>
+        <div class="tab" data-tab="inventario" onclick="cambiarTab('inventario')"><span data-ico="book"></span>Inventario</div>
+        <div class="tab" data-tab="auditoria" onclick="cambiarTab('auditoria')"><span data-ico="search"></span>Auditoría</div>
+{% endif %}
+{% if role == 'admin' %}
+{% endif %}
+    </div>
+
+    <div id="tab-estado" class="tab-panel activo">
+        <div id="cluster-resumen" class="cluster-resumen"></div>
+        <div class="sublabel">Estado del clúster</div>
+        <div id="nodos-grid" class="nodos-grid"></div>
+    </div>
+
+    <div id="tab-apps" class="tab-panel">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <div class="sublabel" style="margin:0;">Servicios del clúster</div>
+            {% if role == 'admin' %}
+            <button class="btn btn-g" onclick="appNueva()">➕ Añadir app</button>
+            {% endif %}
+        </div>
+        <div id="apps-grid" class="apps-grid"></div>
+    </div>
+
+    <div id="tab-nas" class="tab-panel">
+        <div class="nas-head">
+            <div class="nas-info">
+                <div class="nas-breadcrumb" id="nas-breadcrumb"></div>
+                <div class="nas-meta">
+                    <span id="nas-home" class="nas-home"></span>
+                    <span id="nas-uso" class="nas-uso"></span>
+                </div>
+            </div>
+        </div>
+        <div class="nas-toolbar">
+            <select id="nas-usuario-select" class="term-select" title="Ver NAS de otro usuario" style="max-width: 200px;"></select>
+            <button class="btn btn-n" onclick="cargarNas()" title="Refrescar"><span data-ico="refresh"></span></button>
+            <button class="btn btn-g" onclick="nasNuevaCarpeta()" title="Nueva carpeta"><span data-ico="plus"></span>Nueva carpeta</button>
+            <button class="btn btn-b" id="nas-btn-subir" title="Subir archivos"><span data-ico="upload"></span>Subir</button>
+            <button class="btn btn-a" onclick="nasWget()" title="Descargar desde URL"><span data-ico="globe"></span>wget</button>
+            <button class="btn btn-n" onclick="nasDescargarActualZip()" title="Descargar carpeta actual como ZIP"><span data-ico="download"></span>ZIP</button>
+            <input type="file" id="nas-file-input" multiple style="display:none;">
+            <input type="search" id="nas-buscar" class="nas-buscar" placeholder="Buscar en la carpeta…">
+        </div>
+        <div class="nas-upload-bar oculto" id="nas-upload-bar">
+            <div class="nas-upload-track"><div class="nas-upload-fill" id="nas-upload-fill"></div></div>
+            <div class="nas-upload-txt" id="nas-upload-txt"></div>
+        </div>
+        <div class="nas-header-row">
+            <span class="nas-h-ic"></span>
+            <span class="nas-h-nombre" onclick="nasOrdenar('nombre')">Nombre ↕</span>
+            <span class="nas-h-tam" onclick="nasOrdenar('size')">Tamaño ↕</span>
+            <span class="nas-h-fecha" onclick="nasOrdenar('mtime')">Modificado ↕</span>
+            <span class="nas-h-acts"></span>
+        </div>
+        <div id="nas-lista" class="nas-lista">
+            <div class="empty"><span class="spin"></span> Cargando…</div>
+        </div>
+        <div class="nas-drop-hint"><span data-ico="upload"></span>Arrastra archivos aquí para subirlos</div>
+    </div>
+
+{% if role in ['admin', 'operator', 'student'] %}
+    <div id="tab-usuarios" class="tab-panel">
+        <div class="usr-resumen" id="usr-resumen"></div>
+
+        <div class="usr-audit-section">
+            <div class="sublabel" style="display:flex; align-items:center; justify-content:space-between;">
+                <span>🔍 Auditoría completa (4 fuentes: YAML · Panel · Linux · NAS)</span>
+                <button class="btn btn-n" style="padding:3px 9px; font-size:11px;"
+                        onclick="usrAuditRefrescar()" title="Refrescar">
+                    <span data-ico="refresh"></span>
+                </button>
+            </div>
+            <div id="usr-audit-list">
+                <div class="empty"><span class="spin"></span> Pulsa 🔄 o abre esta pestaña para cargar…</div>
+            </div>
+        </div>
+
+        <div class="usr-toolbar">
+            <div style="flex:1;"></div>
+            <button class="btn btn-n" onclick="usrRefrescar()" title="Refrescar">
+                <span data-ico="refresh"></span>
+            </button>
+            <button class="btn btn-g" onclick="usrNuevo()" title="Nuevo usuario">
+                <span data-ico="plus"></span>Nuevo usuario
+            </button>
+        </div>
+
+        <div class="usr-filtros">
+            <label><input type="checkbox" id="usr-f-solo-problemas" onchange="usrRender()"> Solo con discrepancias</label>
+            <label><input type="checkbox" id="usr-f-solo-activos" checked onchange="usrRender()"> Solo activos</label>
+            <input type="search" id="usr-f-buscar" placeholder="Buscar…" oninput="usrRender()">
+        </div>
+
+        <table class="tabla">
+            <thead>
+                <tr>
+                    <th>Usuario</th>
+                    <th>Nombre completo</th>
+                    <th>UID</th>
+                    <th>Rol</th>
+                    <th>Estado</th>
+                    <th>YAML / Sistema</th>
+                    <th>Expira</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="usr-tbody">
+                <tr><td colspan="8" class="empty">Cargando…</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="tab-herramientas" class="tab-panel">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+            <label style="font-size:11px; text-transform:uppercase; color:var(--dim);">Nodo:</label>
+            <select id="herr-nodo" style="width:200px;" onchange="cargarHerramientas()">
+                <option value="">Cargando inventario…</option>
+            </select>
+            <div style="flex:1;"></div>
+            {% if role == 'admin' %}
+            <button class="btn btn-g" onclick="herrEditar()">⚙ Editar</button>
+            {% endif %}
+        </div>
+        <div id="herr-grid" class="herr-grid"></div>
+    </div>
+
+    <div id="tab-terminal" class="tab-panel">
+        <div class="terminal-wrap">
+            <div class="term-header">
+                <span id="term-label">cluster0@— ~ $</span>
+                <select id="term-nodo" class="term-select" title="Nodo destino"></select>
+                <button class="btn btn-a" onclick="abrirShellInteractiva()" title="Shell completa con PTY: vim, nano, htop…">🖥️ Shell interactiva</button>
+                <button class="btn btn-n" onclick="copiarTerminal()" title="Copiar toda la salida" style="padding:3px 10px; font-size:11px;">📋 Copiar todo</button>
+                <button class="btn btn-n" onclick="limpiarTerminal()" style="padding:3px 10px; font-size:11px;">Limpiar</button>
+            </div>
+            <div id="term-body" class="term-body"></div>
+            <textarea id="term-input" class="term-input" rows="1"
+                      placeholder="Escribe un comando y Enter. Shift+Enter = nueva línea. Pega scripts multilinea sin miedo."
+                      spellcheck="false" autocomplete="off"></textarea>
+        </div>
+    </div>
+
+    <div id="tab-playbooks" class="tab-panel">
+        <div style="display:flex; gap:10px; margin-bottom:12px;">
+            <select id="pb-select" style="flex:1;"></select>
+            <button class="btn btn-n" onclick="cargarPlaybooks()" title="Refrescar lista"><span data-ico="refresh"></span></button>
+            <button class="btn btn-b" onclick="editarPlaybookSeleccionado()" title="Ver / editar"><span data-ico="search"></span>Ver / Editar</button>
+            <button class="btn btn-g" onclick="nuevoPlaybook()" title="Nuevo"><span data-ico="plus"></span>Nuevo</button>
+            <button class="btn btn-a" onclick="ejecutarPlaybook()" title="Ejecutar"><span data-ico="play"></span>Ejecutar</button>
+        </div>
+        <div class="sublabel">Salida en vivo</div>
+        <div id="pb-output" class="pb-out oculto"></div>
+        <div class="sublabel" style="margin-top:20px; display:flex; justify-content:space-between; align-items:center;">
+            <span>Historial de ejecuciones</span>
+            <span style="display:flex; gap:6px;">
+                <button class="btn btn-n" style="padding:3px 9px; font-size:11px;" onclick="cargarHistorialTareas()" title="Refrescar"><span data-ico="refresh"></span></button>
+                <button class="btn btn-r" style="padding:3px 9px; font-size:11px;" onclick="limpiarHistorialTareas()" title="Eliminar tareas terminadas">🗑 Limpiar</button>
+            </span>
+        </div>
+        <div id="pb-historial"></div>
+    </div>
+
+    <div id="tab-inventario" class="tab-panel">
+        <div class="inv-header">
+            <div class="inv-path" id="inv-path">Cargando…</div>
+            <div class="inv-actions">
+                <button class="btn btn-n" onclick="invRecargar()" title="Recargar">
+                    <span data-ico="refresh"></span>
+                </button>
+                <button class="btn btn-b" onclick="invVerBackups()" title="Backups">
+                    <span data-ico="folder"></span>Backups
+                </button>
+                <button class="btn btn-g" onclick="invAñadirNodo()" title="Añadir nodo">
+                    <span data-ico="plus"></span>Añadir nodo
+                </button>
+                <button class="btn btn-g" onclick="invGuardar()" title="Guardar cambios">
+                    <span data-ico="upload"></span>Guardar
+                </button>
+            </div>
+        </div>
+
+        <div class="inv-status" id="inv-status"></div>
+
+        <div class="inv-layout">
+            <div class="inv-panel-izq">
+                <div class="sublabel">Vista estructurada</div>
+                <div id="inv-arbol" class="inv-arbol"><div class="empty"><span class="spin"></span> Cargando…</div></div>
+            </div>
+            <div class="inv-panel-der">
+                <div class="sublabel">Editor raw (contenido del archivo)</div>
+                <textarea id="inv-editor" class="inv-editor" spellcheck="false"
+                          placeholder="# Inventario de Ansible&#10;[manager]&#10;10.4.8.10 ansible_user=cluster0&#10;..."
+                          oninput="invOnInput()"></textarea>
+                <div class="inv-editor-foot">
+                    <span id="inv-dirty" class="inv-dirty oculto">● sin guardar</span>
+                    <span class="inv-hint">Doble-click en un nodo del árbol para editarlo</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<div id="tab-auditoria" class="tab-panel">
+        <div class="sublabel">Últimas acciones del panel</div>
+        <table class="tabla">
+            <thead>
+                <tr>
+                    <th style="width:160px;">Fecha</th>
+                    <th style="width:120px;">Usuario</th>
+                    <th style="width:160px;">Acción</th>
+                    <th style="width:160px;">Target</th>
+                    <th>Detalle</th>
+                </tr>
+            </thead>
+            <tbody id="audit-tbody">
+                <tr><td colspan="5" class="empty">Cargando…</td></tr>
+            </tbody>
+        </table>
+    </div>
+{% endif %}
+
+
+
+</div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+async function cmdRapido(accion) {
+    const objetivo = ($('objetivo') || {}).value || 'cluster';
+    try {
+        const data = await api('/api/ejecutar', {
+            method: 'POST',
+            body: JSON.stringify({ accion, objetivo, extra: '' })
+        });
+        toast(`${accion}: ${data.status === 'success' ? 'OK' : 'ERROR'}`, data.status === 'success' ? 'success' : 'error');
+        console.log(data.output);
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function cmdLibre() {
+    const extra = ($('txt-cmd') || {}).value?.trim();
+    if (!extra) { toast('Comando vacío', 'warning'); return; }
+    const objetivo = ($('objetivo') || {}).value || 'cluster';
+    try {
+        const data = await api('/api/ejecutar', {
+            method: 'POST',
+            body: JSON.stringify({ accion: 'comando_libre', objetivo, extra })
+        });
+        toast(data.status === 'success' ? 'Comando OK' : 'Comando con errores',
+              data.status === 'success' ? 'success' : 'error');
+        console.log(data.output);
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+</script>
+
+<script src="/static/js/inventory.js"></script>
+<script src="/static/js/panel.js"></script>
+<script src="/static/js/ui.js"></script>
+<script src="/static/js/terminal.js"></script>
+<script src="/static/js/tasks.js"></script>
+<script src="/static/js/playbooks-editor.js"></script>
+<script src="/static/js/sparklines.js"></script>
+<script src="/static/js/nas.js"></script>
+<script src="/static/js/nas-preview.js"></script>
+<script src="/static/js/nas-bulk.js"></script>
+<script src="/static/js/users-v2.js"></script>
+<script src="/static/js/users-audit.js"></script>
+<script src="/static/js/cmd-output.js"></script>
+<script src="/static/js/nodes-power.js"></script>
+<script src="/static/js/inventory-editor.js"></script>
+
+<div id="xterm-modal" class="modal-bg" style="display:none;">
+    <div class="modal xterm-modal">
+        <div class="xterm-head">
+            <span id="xterm-title">Shell</span>
+            <span class="xterm-hint-inline">vim · nano · htop · top · less · sudo · ssh</span>
+            <button class="btn btn-n" onclick="cerrarShellInteractiva()" style="padding:3px 10px; font-size:11px;">Cerrar</button>
+        </div>
+        <div id="xterm-container" class="xterm-container"></div>
+    </div>
+</div>
+<script src="/static/js/terminal-xterm.js"></script>
+
+</body>
+</html>

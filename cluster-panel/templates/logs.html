@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% set active_tab = 'logs' %}
+{% block title %}Logs · Cluster Panel I2E{% endblock %}
+{% block header_title %}📜 Registro y Análisis de Eventos{% endblock %}
+{% block header_sub %}Supervisión temporal · filtros · descarga CSV{% endblock %}
+
+{% block content %}
+
+<div class="stats-grid">
+    <div class="stat-card"><div class="label">📊 Total</div><div class="value" id="statTotal">--</div></div>
+    <div class="stat-card"><div class="label">ℹ️ Info</div><div class="value" id="statInfo">--</div></div>
+    <div class="stat-card"><div class="label">⚠️ Warnings</div><div class="value" id="statWarn">--</div></div>
+    <div class="stat-card"><div class="label">🔴 Críticos</div><div class="value" id="statCrit">--</div></div>
+</div>
+
+<div class="table-wrap" style="padding: 1rem 1.2rem; margin-bottom: 1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.8rem;">
+        <h2 style="font-size: 1rem; color: #1e3a5f;">📈 Eventos por hora</h2>
+        <select id="rangeLogs" style="padding: 0.4rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1;">
+            <option value="6">Últimas 6 h</option>
+            <option value="24" selected>Últimas 24 h</option>
+            <option value="72">Últimos 3 días</option>
+            <option value="168">Última semana</option>
+            <option value="720">Últimos 30 días</option>
+        </select>
+    </div>
+    <div style="position: relative; height: 240px;">
+        <canvas id="chartLogs"></canvas>
+    </div>
+</div>
+
+<div class="filters">
+    <select id="fLevel">
+        <option value="">Todos los niveles</option>
+        <option value="INFO">INFO</option>
+        <option value="WARNING">WARNING</option>
+        <option value="CRITICAL">CRITICAL</option>
+    </select>
+    <select id="fCategory">
+        <option value="">Todas las categorías</option>
+        <option value="thermal">Térmico</option>
+        <option value="network">Red</option>
+        <option value="node">Nodos</option>
+        <option value="system">Sistema</option>
+        <option value="panel">Panel</option>
+        <option value="collector">Colector</option>
+    </select>
+    <select id="fNode">
+        <option value="">Todos los nodos</option>
+    </select>
+    <input type="text" id="fSearch" placeholder="Buscar texto..." style="min-width: 200px;">
+    <button class="btn" onclick="cargarLogs(1)">🔍 Aplicar</button>
+    <button class="btn" onclick="exportarCSV()">📥 CSV</button>
+    <label style="font-size: 0.85rem; color: #5a6e8a; display:flex; align-items:center; gap:0.4rem;">
+        <input type="checkbox" id="autoRefresh" checked> Auto-refresh
+    </label>
+</div>
+
+<div class="table-wrap">
+    <table id="tablaLogs">
+        <thead>
+            <tr>
+                <th style="width: 170px;">Fecha</th>
+                <th style="width: 90px;">Nivel</th>
+                <th style="width: 100px;">Categoría</th>
+                <th style="width: 130px;">Nodo</th>
+                <th>Mensaje</th>
+            </tr>
+        </thead>
+        <tbody id="tablaLogsBody">
+            <tr><td colspan="5" style="text-align:center; padding: 2rem; color:#94a3b8;">Cargando...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-top: 1rem;">
+    <div id="logPageInfo" style="font-size: 0.85rem; color: #5a6e8a;">--</div>
+    <div style="display:flex; gap: 0.4rem;">
+        <button class="btn" onclick="cambiarPag(-1)">← Anterior</button>
+        <button class="btn" onclick="cambiarPag(1)">Siguiente →</button>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let logChart = null;
+let logPage = 1;
+const LOG_PAGE_SIZE = 50;
+let logTotalPages = 1;
+
+async function cargarResumen() {
+    const horas = document.getElementById('rangeLogs').value;
+    const res = await fetch(`/api/logs/summary?hours=${horas}`);
+    const data = await res.json();
+
+    document.getElementById('statTotal').innerText = data.total ?? 0;
+    document.getElementById('statInfo').innerText  = data.by_level?.INFO ?? 0;
+    document.getElementById('statWarn').innerText  = data.by_level?.WARNING ?? 0;
+    document.getElementById('statCrit').innerText  = data.by_level?.CRITICAL ?? 0;
+
+    const labels = data.by_hour.map(x => {
+        const d = new Date(x.t);
+        return d.toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit' });
+    });
+    const info = data.by_hour.map(x => x.INFO ?? 0);
+    const warn = data.by_hour.map(x => x.WARNING ?? 0);
+    const crit = data.by_hour.map(x => x.CRITICAL ?? 0);
+
+    const ctx = document.getElementById('chartLogs').getContext('2d');
+    if (logChart) {
+        logChart.data.labels = labels;
+        logChart.data.datasets[0].data = info;
+        logChart.data.datasets[1].data = warn;
+        logChart.data.datasets[2].data = crit;
+        logChart.update('none');
+    } else {
+        logChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: 'INFO',     data: info, backgroundColor: '#3b82f6', stack: 'ev' },
+                    { label: 'WARNING',  data: warn, backgroundColor: '#f59e0b', stack: 'ev' },
+                    { label: 'CRITICAL', data: crit, backgroundColor: '#ef4444', stack: 'ev' },
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12, font: { size: 10 } } },
+                    y: { stacked: true, beginAtZero: true, grid: { color: '#e2e8f0' }, ticks: { precision: 0 } }
+                },
+                plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } }
+            }
+        });
+    }
+}
+
+async function cargarLogs(page = 1) {
+    logPage = page;
+    const params = new URLSearchParams({ page, limit: LOG_PAGE_SIZE });
+    const level = document.getElementById('fLevel').value;
+    const cat   = document.getElementById('fCategory').value;
+    const node  = document.getElementById('fNode').value;
+    if (level) params.set('level', level);
+    if (cat)   params.set('category', cat);
+    if (node)  params.set('node', node);
+
+    const res = await fetch('/api/logs?' + params.toString());
+    const data = await res.json();
+    const search = document.getElementById('fSearch').value.toLowerCase().trim();
+
+    let items = data.items || [];
+    if (search) {
+        items = items.filter(x =>
+            (x.message || '').toLowerCase().includes(search) ||
+            (x.node_ip || '').toLowerCase().includes(search)
+        );
+    }
+
+    const tbody = document.getElementById('tablaLogsBody');
+    if (!items.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color:#94a3b8;">Sin eventos en este rango</td></tr>';
+    } else {
+        tbody.innerHTML = items.map(e => `
+            <tr>
+                <td style="font-family: monospace; font-size: 0.8rem;">${fmtFecha(e.timestamp)}</td>
+                <td><span class="badge badge-${e.level || 'INFO'}">${e.level || 'INFO'}</span></td>
+                <td><span class="badge badge-${e.category || 'system'}">${e.category || 'system'}</span></td>
+                <td style="font-family: monospace; font-size: 0.82rem;">${e.node_ip || '—'}</td>
+                <td>${escapeHtml(e.message || '')}</td>
+            </tr>
+        `).join('');
+    }
+
+    logTotalPages = Math.max(1, Math.ceil(data.total / LOG_PAGE_SIZE));
+    document.getElementById('logPageInfo').innerText =
+        `Página ${logPage} de ${logTotalPages} · ${data.total} eventos totales`;
+}
+
+function cambiarPag(delta) {
+    const nueva = Math.max(1, Math.min(logTotalPages, logPage + delta));
+    if (nueva !== logPage) cargarLogs(nueva);
+}
+
+async function cargarNodosFiltro() {
+    const res = await fetch('/api/nodes');
+    const nodes = await res.json();
+    const sel = document.getElementById('fNode');
+    nodes.forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n.ip;
+        opt.textContent = n.name || n.ip;
+        sel.appendChild(opt);
+    });
+}
+
+async function exportarCSV() {
+    const params = new URLSearchParams({ page: 1, limit: 5000 });
+    const level = document.getElementById('fLevel').value;
+    const cat   = document.getElementById('fCategory').value;
+    const node  = document.getElementById('fNode').value;
+    if (level) params.set('level', level);
+    if (cat)   params.set('category', cat);
+    if (node)  params.set('node', node);
+
+    const res = await fetch('/api/logs?' + params.toString());
+    const data = await res.json();
+
+    const esc = s => `"${String(s ?? '').replace(/"/g, '""')}"`;
+    const csv = ['timestamp,level,category,node,message']
+        .concat(data.items.map(e =>
+            [e.timestamp, e.level, e.category, e.node_ip || '', e.message].map(esc).join(',')))
+        .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `logs_cluster_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`Exportados ${data.items.length} eventos`, 'success');
+}
+
+let autoTimer = null;
+function toggleAuto() {
+    const on = document.getElementById('autoRefresh').checked;
+    if (autoTimer) clearInterval(autoTimer);
+    if (on) autoTimer = setInterval(() => { cargarResumen(); cargarLogs(logPage); }, 15000);
+}
+
+document.getElementById('rangeLogs').addEventListener('change', cargarResumen);
+document.getElementById('autoRefresh').addEventListener('change', toggleAuto);
+document.querySelectorAll('.filters select, .filters input').forEach(el => {
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') cargarLogs(1); });
+});
+
+(async () => {
+    await cargarNodosFiltro();
+    await cargarResumen();
+    await cargarLogs(1);
+    toggleAuto();
+})();
+</script>
+{% endblock %}

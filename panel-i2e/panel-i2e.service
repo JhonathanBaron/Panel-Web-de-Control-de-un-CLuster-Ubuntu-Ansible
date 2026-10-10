@@ -1,0 +1,47 @@
+[Unit]
+Description=Panel de Control I2E (Flask + gunicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cluster0
+Group=cluster0
+WorkingDirectory=/home/cluster0/panel-i2e
+
+# Secretos (SECRET_KEY) — archivo modo 600, no versionado
+EnvironmentFile=/home/cluster0/panel-i2e/.env
+
+Environment="PATH=/home/cluster0/panel-i2e/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="HOME=/home/cluster0"
+Environment="PYTHONUNBUFFERED=1"
+
+# gthread: necesario para Flask-Sock (WebSockets) + requests concurrentes
+ExecStart=/home/cluster0/panel-i2e/venv/bin/gunicorn \
+  --workers 1 \
+  --worker-class gthread \
+  --threads 16 \
+  --bind 0.0.0.0:7000 \
+  --timeout 300 \
+  --graceful-timeout 30 \
+  --access-logfile /home/cluster0/panel-i2e/logs/access.log \
+  --error-logfile /home/cluster0/panel-i2e/logs/error.log \
+  --chdir /home/cluster0/panel-i2e \
+  wsgi:app
+
+Restart=always
+RestartSec=5
+
+# Endurecimiento
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=/home/cluster0/panel-i2e
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=panel-i2e
+
+[Install]
+WantedBy=multi-user.target
