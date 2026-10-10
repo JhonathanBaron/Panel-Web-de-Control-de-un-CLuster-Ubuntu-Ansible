@@ -2,7 +2,7 @@
 
 Panel web para administrar un clúster de cómputo Linux.
 
-**Autores:** Jhonathan Dubernet Barón · Jenny Amparo Rosales Agredo · Fabián Rolando Jiménez López
+**Autores:** Jhonathan Duberney Barón · Jenny Amparo Rosales Agredo · Fabián Rolando Jiménez López
 **Institución:** Universidad Pedagógica y Tecnológica de Colombia (UPTC) — Facultad de Ingeniería, Escuela de Ingeniería Electrónica
 **Año:** 2026
 
