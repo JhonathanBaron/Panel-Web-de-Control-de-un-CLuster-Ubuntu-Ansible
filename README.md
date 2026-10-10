@@ -1,4 +1,4 @@
-$content = @'
+
 # Panel Web de Control de un Clúster Ubuntu + Ansible
 
 Conjunto de aplicaciones web para la administración y el monitoreo del clúster Beowulf del **Semillero MATRIS2** (grupo de investigación I²E, Escuela de Ingeniería Electrónica, Universidad Pedagógica y Tecnológica de Colombia).
@@ -77,7 +77,3 @@ Software de uso exclusivo del Semillero MATRIS2 y del grupo de investigación I�
 - jhonathan.baron@uptc.edu.co
 - jenny.rosales@uptc.edu.co
 - fabian.jimenez02@uptc.edu.co
-'@
-
-[System.IO.File]::WriteAllText("$PWD\README.md", $content, [System.Text.UTF8Encoding]::new($false))
-Write-Host "✅ README reescrito con UTF-8 sin BOM"
