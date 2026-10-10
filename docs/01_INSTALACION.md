@@ -1,6 +1,8 @@
 # Guia de Instalacion Completa del Cluster I2E
 
-Esta guia describe, paso a paso, como reproducir el cluster de computo Beowulf del **Semillero MATRIS2** desde cero.
+Esta guia describe, paso a paso, como reproducir el cluster de computo Beowulf del **Semillero MATRIS2** desde cero. 
+
+## NOTA: Las direcciones ip se ajustan de acuerdo a tu red; se tomo de manera general 192.168.1.X, como ejemplo.
 
 ## Indice
 
