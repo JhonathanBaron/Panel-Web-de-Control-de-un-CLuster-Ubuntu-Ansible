@@ -1,0 +1,32 @@
+---
+# ============================================================
+# 02_nfs_client.yml - Cliente NFS en todos los nodos
+# ============================================================
+- name: Configurar cliente NFS
+  hosts: cluster
+  become: true
+
+  vars:
+    nas_server: "192.168.1.19"
+    nas_export: "/srv/nas"
+    nas_mount: "/srv/nas"
+
+  tasks:
+    - name: Instalar cliente NFS
+      apt:
+        name: nfs-common
+        state: present
+
+    - name: Crear punto de montaje
+      file:
+        path: "{{ nas_mount }}"
+        state: directory
+        mode: '0755'
+
+    - name: Montar NFS
+      mount:
+        path: "{{ nas_mount }}"
+        src: "{{ nas_server }}:{{ nas_export }}"
+        fstype: nfs
+        opts: "defaults,_netdev,noatime"
+        state: mounted

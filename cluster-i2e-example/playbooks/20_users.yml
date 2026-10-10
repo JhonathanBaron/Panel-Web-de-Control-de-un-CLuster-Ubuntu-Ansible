@@ -1,0 +1,47 @@
+---
+# ============================================================
+# 20_users.yml - Gestion de usuarios del cluster
+# ============================================================
+- name: Crear usuarios del cluster
+  hosts: cluster
+  become: true
+
+  vars_files:
+    - ../users/users.yaml
+
+  tasks:
+    - name: Crear cada usuario
+      user:
+        name: "{{ item.username }}"
+        uid: "{{ item.uid }}"
+        comment: "{{ item.fullname }}"
+        shell: /bin/bash
+        home: "/srv/nas/home/{{ item.username }}"
+        create_home: false
+        state: present
+      loop: "{{ users }}"
+      when: item.active | default(true)
+
+    - name: Crear directorio home en el NAS
+      file:
+        path: "/srv/nas/home/{{ item.username }}"
+        state: directory
+        owner: "{{ item.uid }}"
+        group: "{{ item.uid }}"
+        mode: '0700'
+      loop: "{{ users }}"
+      when: item.active | default(true)
+      run_once: true
+
+    - name: Restringir sudo para estudiantes
+      copy:
+        dest: "/etc/sudoers.d/99-{{ item.username }}"
+        content: |
+          # Usuario {{ item.username }} ({{ item.role }}) - sin sudo
+          {{ item.username }} ALL=(ALL) !ALL
+        mode: '0440'
+        validate: 'visudo -cf %s'
+      loop: "{{ users }}"
+      when:
+        - item.active | default(true)
+        - item.role == 'student'

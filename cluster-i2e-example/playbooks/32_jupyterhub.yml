@@ -1,0 +1,67 @@
+---
+# ============================================================
+# 32_jupyterhub.yml - Instalacion de JupyterHub
+# ============================================================
+- name: Instalar JupyterHub
+  hosts: manager
+  become: true
+
+  tasks:
+    - name: Instalar dependencias
+      apt:
+        name:
+          - nodejs
+          - npm
+          - python3-pip
+        state: present
+
+    - name: Instalar JupyterHub y JupyterLab
+      pip:
+        name:
+          - jupyterhub
+          - jupyterlab
+          - oauthenticator
+          - dockerspawner
+        state: present
+        executable: pip3
+
+    - name: Crear directorio de configuracion
+      file:
+        path: /etc/jupyterhub
+        state: directory
+        mode: '0755'
+
+    - name: Configuracion basica de JupyterHub
+      copy:
+        dest: /etc/jupyterhub/jupyterhub_config.py
+        content: |
+          c.JupyterHub.bind_url = 'http://0.0.0.0:8888'
+          c.JupyterHub.hub_ip = '0.0.0.0'
+          c.Spawner.default_url = '/lab'
+          c.Spawner.notebook_dir = '~'
+          c.Authenticator.admin_users = {'admin'}
+        mode: '0644'
+
+    - name: Crear servicio systemd
+      copy:
+        dest: /etc/systemd/system/jupyterhub.service
+        content: |
+          [Unit]
+          Description=JupyterHub
+          After=network.target
+
+          [Service]
+          User=root
+          ExecStart=/usr/local/bin/jupyterhub -f /etc/jupyterhub/jupyterhub_config.py
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: Activar JupyterHub
+      systemd:
+        name: jupyterhub
+        enabled: true
+        state: started
+        daemon_reload: true

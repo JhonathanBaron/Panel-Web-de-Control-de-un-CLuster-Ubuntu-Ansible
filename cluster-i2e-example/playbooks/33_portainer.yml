@@ -1,0 +1,31 @@
+---
+# ============================================================
+# 33_portainer.yml - Instalacion de Portainer
+# ============================================================
+- name: Instalar Portainer
+  hosts: manager
+  become: true
+
+  tasks:
+    - name: Instalar Docker si no esta
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Crear volumen de Portainer
+      command: docker volume create portainer_data
+      changed_when: false
+      failed_when: false
+
+    - name: Arrancar contenedor de Portainer
+      community.docker.docker_container:
+        name: portainer
+        image: portainer/portainer-ce:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "9443:9443"
+          - "8000:8000"
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+          - portainer_data:/data

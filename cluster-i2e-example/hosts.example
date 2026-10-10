@@ -1,0 +1,44 @@
+# ============================================================
+# Inventario Cluster Beowulf I2E
+# ============================================================
+# Plantilla de ejemplo. Copiar a ~/cluster-i2e/hosts y
+# ajustar las direcciones IP y usuarios SSH.
+
+[manager]
+192.168.1.10 ansible_user=cluster0
+
+[compute]
+192.168.1.11 ansible_user=cluster1
+192.168.1.12 ansible_user=cluster2
+192.168.1.13 ansible_user=cluster3
+192.168.1.14 ansible_user=cluster4
+192.168.1.15 ansible_user=cluster5
+192.168.1.16 ansible_user=cluster6
+192.168.1.17 ansible_user=cluster7
+192.168.1.18 ansible_user=cluster8
+
+# Nodos con mayor RAM (16 GB)
+[heavy]
+192.168.1.13
+192.168.1.16
+192.168.1.17
+192.168.1.18
+
+# Nodos con menor RAM (8 GB)
+[light]
+192.168.1.11
+192.168.1.12
+192.168.1.14
+192.168.1.15
+
+[nas]
+192.168.1.19 ansible_user=cluster9
+
+[cluster:children]
+manager
+compute
+
+[all:vars]
+ansible_ssh_private_key_file=/home/cluster0/.ssh/id_ed25519
+ansible_python_interpreter=/usr/bin/python3
+#ansible_become_pass=your_sudo_password

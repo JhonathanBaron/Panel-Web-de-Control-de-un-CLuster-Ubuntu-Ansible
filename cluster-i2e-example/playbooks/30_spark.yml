@@ -1,0 +1,67 @@
+---
+# ============================================================
+# 30_spark.yml - Instalacion de Apache Spark
+# ============================================================
+- name: Instalar Apache Spark
+  hosts: cluster
+  become: true
+
+  vars:
+    spark_version: "3.5.1"
+    spark_hadoop: "3"
+    spark_dir: "/opt/spark"
+
+  tasks:
+    - name: Instalar Java
+      apt:
+        name: openjdk-11-jdk
+        state: present
+
+    - name: Descargar Spark
+      get_url:
+        url: "https://dlcdn.apache.org/spark/spark-{{ spark_version }}/spark-{{ spark_version }}-bin-hadoop{{ spark_hadoop }}.tgz"
+        dest: "/tmp/spark-{{ spark_version }}.tgz"
+        mode: '0644'
+      register: spark_download
+
+    - name: Extraer Spark
+      unarchive:
+        src: "/tmp/spark-{{ spark_version }}.tgz"
+        dest: /opt/
+        remote_src: true
+      when: spark_download.changed
+
+    - name: Renombrar directorio
+      file:
+        src: "/opt/spark-{{ spark_version }}-bin-hadoop{{ spark_hadoop }}"
+        dest: "{{ spark_dir }}"
+        state: link
+
+    - name: Configurar JAVA_HOME
+      copy:
+        dest: /etc/profile.d/spark.sh
+        content: |
+          export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+          export SPARK_HOME={{ spark_dir }}
+          export PATH=$PATH:$SPARK_HOME/bin
+        mode: '0644'
+
+    - name: Configurar spark-env.sh
+      copy:
+        dest: "{{ spark_dir }}/conf/spark-env.sh"
+        content: |
+          export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+          export SPARK_MASTER_HOST=192.168.1.10
+          export SPARK_WORKER_MEMORY=6g
+        mode: '0755'
+      when: inventory_hostname in groups['manager']
+
+    - name: Configurar workers
+      copy:
+        dest: "{{ spark_dir }}/conf/workers"
+        content: |
+          {% for host in groups['compute'] %}
+          {{ host }}
+          {% endfor %}
+        mode: '0644'
+      when: inventory_hostname in groups['manager']

@@ -1,0 +1,57 @@
+---
+# ============================================================
+# 00_base.yml - Configuracion base del sistema
+# ============================================================
+- name: Configuracion base del cluster I2E
+  hosts: cluster
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Actualizar cache de apt
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Instalar paquetes base
+      apt:
+        name:
+          - curl
+          - wget
+          - git
+          - vim
+          - htop
+          - net-tools
+          - build-essential
+          - software-properties-common
+          - python3-pip
+          - python3-venv
+          - nfs-common
+          - rsync
+          - tmux
+        state: present
+
+    - name: Establecer zona horaria
+      timezone:
+        name: America/Bogota
+
+    - name: Configurar limites del sistema
+      copy:
+        dest: /etc/security/limits.d/99-cluster.conf
+        content: |
+          * soft nofile 65536
+          * hard nofile 65536
+          * soft nproc 65536
+          * hard nproc 65536
+        mode: '0644'
+
+    - name: Desactivar swap (recomendado para Spark)
+      command: swapoff -a
+      changed_when: false
+      failed_when: false
+
+    - name: Comentar swap en fstab
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\sswap\s.*)$'
+        replace: '# \1'
